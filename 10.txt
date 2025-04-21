@@ -1,0 +1,152 @@
+Assignment 10     (movie_reviews):
+
+
+from pyspark import SparkContext
+import kagglehub
+
+def parse_line(line):
+    """Parses each line of input data into (movie_id, rating)."""
+
+    if line.startswith("userId,movieId,rating,timestamp"):
+        return None
+    parts = line.split(",")
+    return (int(parts[1]), float(parts[2]))
+
+def main():
+    sc = SparkContext("local", "MovieRatings")
+
+    path = kagglehub.dataset_download("rounakbanik/the-movies-dataset")
+    dataset_file = f"{path}/ratings.csv"
+
+    input_rdd = sc.textFile(dataset_file)
+
+    mapped_rdd = input_rdd.filter(lambda line: not line.startswith("userId,movieId,rating,timestamp")).map(parse_line)
+
+    reduced_rdd = mapped_rdd.groupByKey().mapValues(lambda ratings: sum(ratings) / len(ratings))
+
+    results = reduced_rdd.collect()
+    for movie_id, avg_rating in results:
+        print(f"Movie {movie_id} has an average rating of {avg_rating:.2f}")
+
+    sc.stop()
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+Explanation:
+
+
+
+Sure! Let's go step by step through this PySpark script for calculating **average movie ratings** using a dataset from Kaggle:
+
+---
+
+## 🔧 **Imports**
+```python
+from pyspark import SparkContext
+import kagglehub
+```
+- **`SparkContext`**: The main entry point for Spark functionality. It allows interaction with RDDs (Resilient Distributed Datasets).
+- **`kagglehub`**: Used to easily download Kaggle datasets in Colab or similar environments.
+
+---
+
+## 🧩 **Function: `parse_line`**
+```python
+def parse_line(line):
+    """Parses each line of input data into (movie_id, rating)."""
+    if line.startswith("userId,movieId,rating,timestamp"):
+        return None  # Skip header
+    parts = line.split(",")
+    return (int(parts[1]), float(parts[2]))  # (movieId, rating)
+```
+- Ignores the header.
+- Splits each CSV line and returns a tuple: **(movie ID, rating)**.
+
+---
+
+## 🧠 **Main Logic**
+```python
+def main():
+    sc = SparkContext("local", "MovieRatings")  # Start Spark
+```
+- Starts a **local Spark session** named `"MovieRatings"`.
+
+---
+
+### 📥 **Download dataset**
+```python
+    path = kagglehub.dataset_download("rounakbanik/the-movies-dataset")
+    dataset_file = f"{path}/ratings.csv"
+```
+- Downloads the **"The Movies Dataset"** from Kaggle using `kagglehub`.
+- Picks the `ratings.csv` file (which contains user ratings).
+
+---
+
+### 📄 **Read and Process Data**
+```python
+    input_rdd = sc.textFile(dataset_file)
+```
+- Loads the CSV file as an RDD (one line per record).
+
+```python
+    mapped_rdd = input_rdd.filter(lambda line: not line.startswith("userId,movieId,rating,timestamp")).map(parse_line)
+```
+- **Removes the header**.
+- **Parses each line** into (movie_id, rating) using `parse_line()`.
+
+---
+
+### 📊 **Group and Average Ratings**
+```python
+    reduced_rdd = mapped_rdd.groupByKey().mapValues(lambda ratings: sum(ratings) / len(ratings))
+```
+- **Groups ratings by movie ID**.
+- **Calculates average** rating for each movie using `sum / count`.
+
+---
+
+### 🖨️ **Display Results**
+```python
+    results = reduced_rdd.collect()
+    for movie_id, avg_rating in results:
+        print(f"Movie {movie_id} has an average rating of {avg_rating:.2f}")
+```
+- Collects results to the driver and prints average ratings for each movie.
+
+---
+
+### 🛑 **Stop Spark**
+```python
+    sc.stop()
+```
+- Stops the Spark context to free up resources.
+
+---
+
+### ✅ **Entry Point**
+```python
+if __name__ == "__main__":
+    main()
+```
+- Standard Python entry point. It ensures the script only runs if it's executed directly (not imported).
+
+---
+
+## 🧠 Summary
+
+This PySpark program:
+- Downloads Kaggle's movie rating dataset.
+- Parses and cleans data.
+- Calculates the **average rating** for each movie using Spark RDDs.
+- Displays the results.
+
+---
+

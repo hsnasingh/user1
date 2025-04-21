@@ -1,0 +1,322 @@
+Assignment 3 (Time Series):
+
+
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import unix_timestamp, to_timestamp, col
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+from pyspark.ml.regression import LinearRegression
+import matplotlib.pyplot as plt
+
+# 1. Start Spark
+spark = SparkSession.builder.appName("TrafficForecast").getOrCreate()
+
+# 2. Load Data
+df = spark.read.csv("/content/Traffic.csv", header=True, inferSchema=True)
+
+# 3. Convert Time and Date
+df = df.withColumn("Time", col("Time").cast("string"))
+df = df.withColumn("Date", to_timestamp("Date"))  # ensure date is a proper timestamp
+df = df.withColumn("Day of the week", col("Day of the week").cast("string"))
+df = df.withColumn("Traffic Situation", col("Traffic Situation").cast("string"))
+
+# 4. Index Categorical Columns
+df = StringIndexer(inputCol="Time", outputCol="Time_Index").fit(df).transform(df)
+df = StringIndexer(inputCol="Day of the week", outputCol="Day_Index").fit(df).transform(df)
+df = StringIndexer(inputCol="Traffic Situation", outputCol="Traffic_Index").fit(df).transform(df)
+
+# 5. Feature Vector
+df = df.withColumn("Date_Unix", unix_timestamp("Date"))
+assembler = VectorAssembler(
+    inputCols=[
+        "Date_Unix",
+        "Time_Index",
+        "Day_Index",
+        "CarCount",
+        "BikeCount",
+        "BusCount",
+        "TruckCount",
+        "Total",
+        "Traffic_Index"
+    ],
+    outputCol="features"
+)
+df = assembler.transform(df)
+
+# 6. Train-Test Split & Model
+train, test = df.randomSplit([0.8, 0.2], seed=1)
+model = LinearRegression(featuresCol="features", labelCol="Total").fit(train)
+
+# 7. Predict & Show
+pred = model.transform(test)
+pred.select("Date", "Total", "prediction").show(5)
+
+# 8. Plot (Optional)
+pdf = df.select("Date", "Total").toPandas()
+pdf.plot(x="Date", y="Total", figsize=(10, 5), title="Total Traffic Over Time")
+plt.xlabel("Date")
+plt.ylabel("Total Vehicles")
+plt.grid()
+plt.show()
+
+spark.stop()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import unix_timestamp, to_timestamp, col
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+from pyspark.ml.regression import LinearRegression
+import matplotlib.pyplot as plt
+
+# 1. Start Spark
+spark = SparkSession.builder.appName("TrafficForecast").getOrCreate()
+
+# 2. Load Data
+df = spark.read.csv("/content/traffic_dataset_with_trend.csv", header=True, inferSchema=True)
+
+# 3. Convert Timestamp + Categorical Columns
+df = df.withColumn("Timestamp", to_timestamp("Timestamp"))
+df = df.withColumn("Events", col("Events").cast("string"))
+
+# 4. Index Categorical Columns
+df = StringIndexer(inputCol="Weather", outputCol="Weather_Index").fit(df).transform(df)
+df = StringIndexer(inputCol="Events", outputCol="Events_Index").fit(df).transform(df)
+
+# 5. Feature Vector
+df = df.withColumn("Timestamp_Unix", unix_timestamp("Timestamp"))
+assembler = VectorAssembler(inputCols=["Timestamp_Unix", "Weather_Index", "Events_Index"], outputCol="features")
+df = assembler.transform(df)
+
+# 6. Train-Test Split & Model
+train, test = df.randomSplit([0.8, 0.2], seed=1)
+model = LinearRegression(featuresCol="features", labelCol="Traffic Volume").fit(train)
+
+# 7. Predict & Show
+pred = model.transform(test)
+pred.select("Timestamp", "Traffic Volume", "prediction").show(5)
+
+# 8. Plot (Optional)
+pdf = df.select("Timestamp", "Traffic Volume").toPandas()
+pdf.plot(x="Timestamp", y="Traffic Volume", figsize=(10, 5), title="Traffic Over Time")
+plt.xlabel("Date")
+plt.ylabel("Volume")
+plt.grid()
+plt.show()
+
+spark.stop()
+
+
+
+
+
+
+https://www.kaggle.com/datasets/stealthtechnologies/traffic-time-series-dataset
+
+
+
+
+
+
+Explanation:
+
+
+Code explanation:
+
+Here's a simple explanation of the code step-by-step:
+
+---
+
+### 🔧 **What does this code do?**
+This code uses **PySpark** to perform **traffic volume prediction** using **linear regression** on a time-series dataset (`traffic_dataset_with_trend.csv`). It includes data preparation, model training, prediction, and visualization.
+
+---
+
+### 📘 **Line-by-Line Explanation:**
+
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import unix_timestamp, to_timestamp, col
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+from pyspark.ml.regression import LinearRegression
+import matplotlib.pyplot as plt
+```
+- **Imports** necessary PySpark modules for data handling, feature engineering, modeling, and visualization.
+
+---
+
+```python
+spark = SparkSession.builder.appName("TrafficForecast").getOrCreate()
+```
+- Starts a new **Spark session** named "TrafficForecast".
+
+---
+
+```python
+df = spark.read.csv("/content/traffic_dataset_with_trend.csv", header=True, inferSchema=True)
+```
+- Reads the CSV file into a DataFrame.
+- `header=True` treats the first row as column names.
+- `inferSchema=True` automatically detects data types.
+
+---
+
+```python
+df = df.withColumn("Timestamp", to_timestamp("Timestamp"))
+df = df.withColumn("Events", col("Events").cast("string"))
+```
+- Converts the `Timestamp` column to datetime format.
+- Ensures the `Events` column is a string (required for indexing).
+
+---
+
+```python
+df = StringIndexer(inputCol="Weather", outputCol="Weather_Index").fit(df).transform(df)
+df = StringIndexer(inputCol="Events", outputCol="Events_Index").fit(df).transform(df)
+```
+- Converts **categorical string columns** (`Weather`, `Events`) into **numeric indexes** so they can be used in the model.
+
+---
+
+```python
+df = df.withColumn("Timestamp_Unix", unix_timestamp("Timestamp"))
+```
+- Converts the timestamp into a Unix time format (seconds since 1970) — easier for modeling.
+
+---
+
+```python
+assembler = VectorAssembler(inputCols=["Timestamp_Unix", "Weather_Index", "Events_Index"], outputCol="features")
+df = assembler.transform(df)
+```
+- Combines multiple input columns into a single **features vector** for the ML model.
+
+---
+
+```python
+train, test = df.randomSplit([0.8, 0.2], seed=1)
+model = LinearRegression(featuresCol="features", labelCol="Traffic Volume").fit(train)
+```
+- Splits data into 80% training and 20% testing.
+- Trains a **Linear Regression** model using `features` to predict `Traffic Volume`.
+
+---
+
+```python
+pred = model.transform(test)
+pred.select("Timestamp", "Traffic Volume", "prediction").show(5)
+```
+- Uses the model to make predictions on the test set.
+- Shows the actual vs. predicted traffic volume.
+
+---
+
+```python
+pdf = df.select("Timestamp", "Traffic Volume").toPandas()
+pdf.plot(x="Timestamp", y="Traffic Volume", figsize=(10, 5), title="Traffic Over Time")
+plt.xlabel("Date")
+plt.ylabel("Volume")
+plt.grid()
+plt.show()
+```
+- Converts the DataFrame to pandas for visualization.
+- Plots how traffic volume changes over time using matplotlib.
+
+---
+
+```python
+spark.stop()
+```
+- Stops the Spark session to free resources.
+
+---
+
+### ✅ **Summary:**
+- **Reads** and cleans time-series traffic data.
+- **Encodes** categorical variables.
+- **Converts** timestamps to numeric format.
+- **Trains** a linear regression model to predict traffic volume.
+- **Visualizes** traffic volume trends over time.
+
+
+
+
+
+Result Interpretation:  
+
+To explain this result to someone else, let's break it down clearly and step by step, focusing on the key aspects of the output and what insights we can derive.
+
+### **1. Context of the Result**
+The result is showing a comparison between the **actual traffic volume** and the **predicted traffic volume** at different times on **January 1st, 2023**. The goal of the model was to predict traffic volume based on certain factors, such as the **timestamp**, **weather conditions**, and **events** that could impact traffic.
+
+### **2. Understanding the Columns**
+The output consists of the following columns:
+- **Timestamp**: The specific time at which traffic volume was recorded.
+- **Traffic Volume**: The actual traffic volume at that time.
+- **Prediction**: The traffic volume predicted by the machine learning model for that same timestamp.
+
+### **3. Interpreting the Specific Results**
+Here's a quick look at each row in the result and how to interpret it:
+
+#### **Row 1: `2023-01-01 02:00:00`**
+- **Actual Traffic Volume**: 582.0
+- **Predicted Traffic Volume**: 1068.27
+- **Interpretation**: The model predicted **1068.27** traffic volume, but the actual traffic volume was much lower at **582.0**. The model **over-predicted** the traffic volume for this time period. This suggests that, at this time of day (early morning), traffic is lighter than expected.
+
+#### **Row 2: `2023-01-01 06:00:00`**
+- **Actual Traffic Volume**: 3713.0
+- **Predicted Traffic Volume**: 2856.79
+- **Interpretation**: The model predicted **2856.79**, but the actual traffic was **3713.0**, indicating that the model **under-predicted** the traffic. This might suggest that during this time (early morning), the model didn't fully capture the increase in traffic.
+
+#### **Row 3: `2023-01-01 08:00:00`**
+- **Actual Traffic Volume**: 4234.0
+- **Predicted Traffic Volume**: 2849.78
+- **Interpretation**: The model predicted **2849.78**, but the actual traffic volume was **4234.0**, which is significantly higher. The model **under-predicted** the traffic again at a busier time in the morning. This suggests that the model might be missing some key factors that influence morning traffic volume.
+
+#### **Row 4: `2023-01-01 13:00:00`**
+- **Actual Traffic Volume**: 2953.0
+- **Predicted Traffic Volume**: 2853.33
+- **Interpretation**: The model's prediction is **2853.33**, which is very close to the actual traffic volume of **2953.0**. This indicates that the model performed well during this period and was able to predict the traffic volume with relatively low error.
+
+#### **Row 5: `2023-01-01 19:00:00`**
+- **Actual Traffic Volume**: 1293.0
+- **Predicted Traffic Volume**: 1075.43
+- **Interpretation**: The model predicted **1075.43**, while the actual traffic volume was **1293.0**, meaning it **under-predicted** the traffic slightly. This shows that the model might not be fully capturing factors that influence evening traffic, which could differ from daytime traffic patterns.
+
+### **4. What We Can Infer from the Results**
+
+1. **Model Performance**:
+   - The model does fairly well at certain times of the day (e.g., around **1 PM**), where the predicted traffic volume is close to the actual value.
+   - However, it struggles during early mornings (like at **2 AM**) and busy periods (like **8 AM**), either over-predicting or under-predicting the traffic volume. This suggests that the model is not perfect and may need adjustments.
+
+2. **Traffic Prediction Challenges**:
+   - The model seems to be **over-predicting during off-peak hours (like early morning)** and **under-predicting during peak hours (like 8 AM)**. This suggests that the model might not be fully capturing the nuances of traffic patterns at different times of day.
+   - **External factors** like weather, holidays, or unexpected events could be influencing traffic volume in ways that the model isn't accounting for, leading to errors in its predictions.
+
+3. **Areas for Improvement**:
+   - The model could benefit from **more features** or **additional data** that account for other factors, such as specific events happening in the area, holidays, or more granular weather data.
+   - Another improvement might involve trying different machine learning models, as **Linear Regression** may not be the best fit for this type of time-series data. For example, models that account for **seasonality** or **non-linear relationships** (like Random Forest, Gradient Boosting, or even deep learning) could yield better predictions.
+
+4. **Practical Implication**:
+   - If the goal is to forecast traffic for things like **urban planning** or **transportation management**, the model can still provide valuable insights but should be considered as one tool among many. The inaccuracies in prediction show that more fine-tuned models could be more reliable.
+   - For businesses like **ride-hailing companies** or **logistics companies**, this kind of traffic prediction could help plan for optimal routes or manage vehicle fleets more effectively, but they should be aware of the model's limitations.
+
+### **5. Key Takeaway**
+The model shows **mixed performance** — it can predict traffic reasonably well during some times of the day, but it struggles to capture the full complexity of traffic patterns at other times. This highlights the importance of refining the model and incorporating more factors to improve the accuracy of predictions.
+

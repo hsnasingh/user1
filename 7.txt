@@ -1,0 +1,107 @@
+Assignment 7   (word count):
+
+
+
+from pyspark import SparkContext
+
+sc = SparkContext("local", "WordCount")
+
+# Load text file into an RDD
+text_rdd = sc.textFile("input.txt")
+
+# Map Phase: Split lines into words and assign count 1 to each word
+words_rdd = text_rdd.flatMap(lambda line: line.split(" ")) \
+                     .map(lambda word: (word, 1))
+
+# Reduce Phase: Sum counts of the same words
+word_count_rdd = words_rdd.reduceByKey(lambda x, y: x + y)
+
+# Collect and print results
+print(word_count_rdd.collect())
+
+sc.stop()
+
+
+
+
+Explanation:
+
+
+This code performs a **word count** using **PySpark's low-level RDD API**. It's one of the most basic and classic examples in distributed computing.
+
+Here’s a **step-by-step explanation** of what it does:
+
+---
+
+### 🔶 **1. Import and Start Spark Context**
+```python
+from pyspark import SparkContext
+
+sc = SparkContext("local", "WordCount")
+```
+- `SparkContext` is the entry point for Spark functionality when working with **RDDs**.
+- `"local"` means it's running on your local machine (not a cluster).
+- `"WordCount"` is the application name.
+
+---
+
+### 🔶 **2. Load Text File**
+```python
+text_rdd = sc.textFile("input.txt")
+```
+- Loads `input.txt` into an RDD (Resilient Distributed Dataset).
+- Each line in the file becomes one element in `text_rdd`.
+
+---
+
+### 🔶 **3. Map Phase – Tokenize and Assign Initial Count**
+```python
+words_rdd = text_rdd.flatMap(lambda line: line.split(" ")) \
+                     .map(lambda word: (word, 1))
+```
+- `flatMap(...)`: Splits each line into words. Flattens the result into a single list of words.
+- `map(...)`: Converts each word into a tuple like `("word", 1)`.
+
+🧠 This prepares the data for **counting**, assigning `1` to each occurrence.
+
+---
+
+### 🔶 **4. Reduce Phase – Count Word Frequencies**
+```python
+word_count_rdd = words_rdd.reduceByKey(lambda x, y: x + y)
+```
+- Groups all tuples by the **word** (the key).
+- For each group, adds the counts together (i.e., `1 + 1 + ...`).
+- Result is a new RDD like: `[("word1", count1), ("word2", count2), ...]`
+
+---
+
+### 🔶 **5. Collect and Display Results**
+```python
+print(word_count_rdd.collect())
+```
+- `collect()` brings all results from the RDD back to the **driver** as a list.
+- `print(...)` displays the word counts.
+
+---
+
+### 🔶 **6. Stop Spark Context**
+```python
+sc.stop()
+```
+- Gracefully shuts down the Spark context and releases resources.
+
+---
+
+### ✅ **Example Output**
+Suppose `input.txt` contains:
+```
+hello world
+hello spark
+```
+Then the output will be something like:
+```python
+[('hello', 2), ('world', 1), ('spark', 1)]
+```
+
+---

@@ -1,0 +1,306 @@
+Assignment 4   (Sentiment analysis) :
+
+
+
+import time
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml import Pipeline
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("SentimentAnalysis").getOrCreate()
+
+# Start execution time measurement
+start_time = time.time()
+
+# Load dataset
+train_data_path = "train_E6oV3lV.csv"
+test_data_path = "test_tweets_anuFYb8.csv"
+
+df_train = spark.read.csv(train_data_path, header=True, inferSchema=True)
+df_test = spark.read.csv(test_data_path, header=True, inferSchema=True)
+
+# Select required columns
+
+df_train = df_train.select(col("tweet"), col("label"))
+df_test = df_test.select(col("tweet"))
+
+# Tokenization
+tokenizer = Tokenizer(inputCol="tweet", outputCol="words")
+
+# Remove stopwords
+remover = StopWordsRemover(inputCol="words", outputCol="filtered_words")
+
+# Convert words to numerical features using TF-IDF
+hashing_tf = HashingTF(inputCol="filtered_words", outputCol="raw_features",
+numFeatures=10000)
+idf = IDF(inputCol="raw_features", outputCol="features")
+
+# Logistic Regression model
+lr = LogisticRegression(featuresCol="features", labelCol="label")
+
+# Create pipeline
+pipeline = Pipeline(stages=[tokenizer, remover, hashing_tf, idf, lr])
+
+# Train model
+model = pipeline.fit(df_train)
+
+# Make predictions
+
+predictions = model.transform(df_test)
+
+# End execution time measurement
+end_time = time.time()
+execution_time = end_time - start_time
+print(f"Execution Time: {execution_time:.2f} seconds")
+
+# Show predictions
+predictions.select("tweet", "prediction").show(10)
+
+# Stop Spark session
+spark.stop()
+
+
+
+
+
+
+https://github.com/hafidhfikri/Practice-Twitter-Sentiment-Analysis/tree/master
+
+
+
+
+
+
+Explanation:
+
+
+
+
+---
+
+## ✅ Code Explanation (Step-by-Step)
+
+### 📌 **1. Import Libraries**
+```python
+import time
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+from pyspark.ml.feature import Tokenizer, StopWordsRemover, HashingTF, IDF
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml import Pipeline
+```
+- `time`: To measure how long the process takes.
+- `SparkSession`: Entry point for working with **Spark**.
+- `col`: For selecting specific columns from data.
+- `Tokenizer`, `StopWordsRemover`, `HashingTF`, `IDF`: Preprocessing tools for **text** data.
+- `LogisticRegression`: Your **classification algorithm**.
+- `Pipeline`: Organizes all stages into a **single workflow**.
+
+---
+
+### 📌 **2. Start Spark Session**
+```python
+spark = SparkSession.builder.appName("SentimentAnalysis").getOrCreate()
+```
+- Initializes a **Spark session** with the name `SentimentAnalysis`.
+- Spark allows you to process **large datasets** in a **distributed manner**.
+
+---
+
+### 📌 **3. Start Execution Time Measurement**
+```python
+start_time = time.time()
+```
+- Starts a **timer** to measure how long the model takes to run.
+
+---
+
+### 📌 **4. Load Dataset**
+```python
+train_data_path = "train_E6oV3lV.csv"
+test_data_path = "test_tweets_anuFYb8.csv"
+
+df_train = spark.read.csv(train_data_path, header=True, inferSchema=True)
+df_test = spark.read.csv(test_data_path, header=True, inferSchema=True)
+```
+- Loads two CSV files into **Spark DataFrames**:
+  - `df_train`: Has **tweets** and their **labels** (positive/negative sentiment).
+  - `df_test`: Has only **tweets**, no labels (you want to predict them).
+
+- `header=True`: Use the first row as column names.
+- `inferSchema=True`: Automatically detects data types.
+
+---
+
+### 📌 **5. Select Required Columns**
+```python
+df_train = df_train.select(col("tweet"), col("label"))
+df_test = df_test.select(col("tweet"))
+```
+- Keeps only the important columns:
+  - `tweet`: The text.
+  - `label`: Sentiment (only in training data).
+
+---
+
+### 📌 **6. Preprocessing Stages**
+#### 🔹 **Tokenizer**
+```python
+tokenizer = Tokenizer(inputCol="tweet", outputCol="words")
+```
+- Breaks the tweet into individual **words**.
+#### Example:
+```
+Tweet: "I love Spark!"
+Tokens: ["I", "love", "Spark!"]
+```
+
+#### 🔹 **StopWordsRemover**
+```python
+remover = StopWordsRemover(inputCol="words", outputCol="filtered_words")
+```
+- Removes **common words** (like "the", "is", "and") that don’t add value.
+#### Example:
+```
+Tokens before: ["I", "love", "Spark"]
+After stopword removal: ["love", "Spark"]
+```
+
+#### 🔹 **HashingTF (Term Frequency)**
+```python
+hashing_tf = HashingTF(inputCol="filtered_words", outputCol="raw_features", numFeatures=10000)
+```
+- Converts words into **numeric feature vectors**.
+- Uses a **hashing trick** to map words to numbers.
+#### Example:
+```
+["love", "Spark"] → [0, 1, 3, 0, ...]
+```
+
+#### 🔹 **IDF (Inverse Document Frequency)**
+```python
+idf = IDF(inputCol="raw_features", outputCol="features")
+```
+- Scales the TF values to reduce the impact of **common words** and highlight **important words**.
+
+---
+
+### 📌 **7. Define Classifier (Logistic Regression)**
+```python
+lr = LogisticRegression(featuresCol="features", labelCol="label")
+```
+- **Supervised learning** algorithm.
+- Learns from `features` (text represented as numbers) and `label` (sentiment).
+- Output is a **binary prediction**:
+  - `0.0`: Negative
+  - `1.0`: Positive
+
+---
+
+### 📌 **8. Create Pipeline**
+```python
+pipeline = Pipeline(stages=[tokenizer, remover, hashing_tf, idf, lr])
+```
+- Combines all preprocessing and the classifier into a **single workflow**.
+- Spark Pipelines are like **assembly lines**, where data flows through **multiple stages**.
+
+---
+
+### 📌 **9. Train Model**
+```python
+model = pipeline.fit(df_train)
+```
+- Fits (trains) the pipeline on your **training data**.
+- The model learns how to **predict sentiment** by processing tweets and finding patterns.
+
+---
+
+### 📌 **10. Make Predictions**
+```python
+predictions = model.transform(df_test)
+```
+- Applies the trained model to the **test dataset** (unlabeled tweets).
+- The model predicts whether each tweet is **positive** or **negative**.
+
+---
+
+### 📌 **11. Measure and Show Execution Time**
+```python
+end_time = time.time()
+execution_time = end_time - start_time
+print(f"Execution Time: {execution_time:.2f} seconds")
+```
+- Calculates how long the entire process took.
+- Prints the execution time (e.g., `26.80 seconds`).
+
+---
+
+### 📌 **12. Show Predictions**
+```python
+predictions.select("tweet", "prediction").show(10)
+```
+- Displays the first 10 rows:
+  - `tweet`: The text.
+  - `prediction`: The predicted sentiment label (`0.0` or `1.0`).
+
+---
+
+### 📌 **13. Stop Spark Session**
+```python
+spark.stop()
+```
+- Closes the Spark session.
+- Frees up resources.
+
+---
+
+## ✅ Link to the Output
+
+```
+Execution Time: 26.80 seconds
++--------------------+----------+
+|               tweet|prediction|
++--------------------+----------+
+|#studiolife #aisl...|       0.0|
+|  @user #white #su...|       0.0|
+|safe ways to heal...|       0.0|
+|is the hp and the...|       0.0|
+| 3rd #bihday to ... |       0.0|
+|choose to be   :)...|       0.0|
+|something inside ...|       1.0|
+|#finished#tattoo#...|       0.0|
+| @user @user @use...|       0.0|
+|#delicious  #foo...|       0.0|
++--------------------+----------+
+```
+
+- The **model predicted sentiment** for each tweet.
+- Most predictions are `0.0` (negative sentiment).
+- **Execution Time** was around **27 seconds**, which is efficient for Spark-based processing.
+
+---
+
+## ✅ Key Takeaways
+
+| Section                | Summary                                                                                 |
+|------------------------|-----------------------------------------------------------------------------------------|
+| **Pipeline**           | Automates preprocessing + model training + prediction.                                  |
+| **Logistic Regression**| Basic model good for simple binary classification but may need improvement.             |
+| **Preprocessing**      | Text is tokenized, cleaned, and converted into numerical vectors (TF-IDF).              |
+| **Performance**        | Execution time is measured; predictions show model inference speed and scalability.     |
+
+---
+
+## ✅ What You Can Improve
+- Add **model evaluation** (accuracy, precision, recall) on a **labeled test set**.
+- Handle **class imbalance** if too many negatives are predicted.
+- Try **better models** (Random Forest, XGBoost, Deep Learning like LSTM or BERT).
+- Enhance **feature extraction** (n-grams, embeddings, sentiment lexicons).
+
+---
+
+
+

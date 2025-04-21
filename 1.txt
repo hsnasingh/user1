@@ -1,0 +1,154 @@
+Assignment 1 (PCA):
+
+
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler, StandardScaler, PCA      #Vest plz
+import matplotlib.pyplot as plt
+
+# Start Spark session
+spark = SparkSession.builder.appName("PCAExample").getOrCreate()
+
+# Load and clean data
+df = spark.read.csv('/content/retail_store_sales.csv', header=True, inferSchema=True).fillna(0)
+
+# Select numeric columns
+num_cols = [col for col, dtype in df.dtypes if dtype in ('int', 'double')]
+
+# Assemble and scale features
+vec = VectorAssembler(inputCols=num_cols, outputCol='features').transform(df)
+scaled = StandardScaler(inputCol='features', outputCol='scaled').fit(vec).transform(vec)
+
+# Apply PCA
+pca_data = PCA(k=2, inputCol='scaled', outputCol='pca').fit(scaled).transform(scaled)   #outputCol='pca' stores the 1st and 2nd principal components as 2D vectors.
+
+# Collect for plotting
+points = pca_data.select('pca').collect()     #here, we are collecting the PCA vectors in the 'pca' column as a python list
+x = [row['pca'][0] for row in points]         #here we are extracting the 1st and 2nd principal components for plotting.
+y = [row['pca'][1] for row in points]
+
+# Plot
+plt.scatter(x, y)
+plt.title('PCA Plot')
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.show()
+
+spark.stop()
+
+
+
+
+
+https://www.kaggle.com/datasets/ahmedmohamed2003/retail-store-sales-dirty-for-data-cleaning
+
+
+
+
+
+
+
+Explanation:
+
+Here's a **step-by-step explanation** of your simplified PySpark PCA code:
+
+---
+
+### 🔹 **1. Import Required Libraries**
+```python
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler, StandardScaler, PCA
+import matplotlib.pyplot as plt
+```
+- `SparkSession`: Used to create a Spark app.
+- `VectorAssembler`: Combines multiple columns into a single vector column (needed for ML models).
+- `StandardScaler`: Normalizes data (important before PCA).
+- `PCA`: Reduces dimensionality of data.
+- `matplotlib.pyplot`: For plotting results.
+
+---
+
+### 🔹 **2. Start Spark Session**
+```python
+spark = SparkSession.builder.appName("PCAExample").getOrCreate()
+```
+- Starts a new Spark application named `"PCAExample"`.
+
+---
+
+### 🔹 **3. Load and Clean Data**
+```python
+df = spark.read.csv('/content/retail_store_sales.csv', header=True, inferSchema=True).fillna(0)
+```
+- Loads a CSV file.
+- `header=True`: Uses first row as column names.
+- `inferSchema=True`: Automatically detects data types.
+- `fillna(0)`: Replaces missing values with 0.
+
+---
+
+### 🔹 **4. Select Numeric Columns Only**
+```python
+num_cols = [col for col, dtype in df.dtypes if dtype in ('int', 'double')]
+```
+- Filters and stores only numeric columns (required for PCA).
+
+---
+
+### 🔹 **5. Assemble Features and Scale**
+```python
+vec = VectorAssembler(inputCols=num_cols, outputCol='features').transform(df)
+scaled = StandardScaler(inputCol='features', outputCol='scaled').fit(vec).transform(vec)
+```
+- `VectorAssembler`: Combines numeric columns into a single feature vector.
+- `StandardScaler`: Normalizes feature values (zero mean, unit variance), which is important for PCA.
+
+---
+
+### 🔹 **6. Apply PCA**
+```python
+pca_data = PCA(k=2, inputCol='scaled', outputCol='pca').fit(scaled).transform(scaled)
+```
+- Applies **Principal Component Analysis (PCA)** to reduce the feature space to 2 principal components.
+- Output column `'pca'` contains 2D vectors.
+
+---
+
+### 🔹 **7. Prepare Data for Plotting**
+```python
+points = pca_data.select('pca').collect()
+x = [row['pca'][0] for row in points]
+y = [row['pca'][1] for row in points]
+```
+- Collects the reduced PCA vectors to the driver as a Python list.
+- Extracts the first and second components for plotting.
+
+---
+
+### 🔹 **8. Plot PCA Results**
+```python
+plt.scatter(x, y)
+plt.title('PCA Plot')
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.show()
+```
+- Creates a scatter plot using the two principal components.
+- Helps visualize high-dimensional data in 2D.
+
+---
+
+### 🔹 **9. Stop Spark Session**
+```python
+spark.stop()
+```
+- Gracefully shuts down the Spark application.
+
+---
+
+Let me know if you want a diagram or a real data example with this!
+
+
+
+
+
+

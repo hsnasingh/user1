@@ -1,0 +1,251 @@
+Assignment 6  (Graph Analytics):
+
+
+
+
+
+# Install GraphFrames in Colab if needed:
+# !pip install graphframes
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, sum as _sum, avg, count, month, year
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Start Spark Session
+spark = SparkSession.builder \
+    .appName("TransactionAnalysis") \
+    .getOrCreate()
+
+# Load CSV file (after uploading it via files.upload())
+df = spark.read.csv("/content/data-analytics A6.csv", header=True, inferSchema=True)
+
+# Clean column names (if needed)
+df = df.withColumnRenamed("Customer ID", "CustomerID")
+
+# Add TotalAmount Column
+df = df.withColumn("TotalAmount", col("Quantity") * col("Price"))
+
+# Grouping & Summary by Customer
+summary = df.groupBy("CustomerID").agg(
+    _sum("TotalAmount").alias("TotalSpent"),
+    _sum("Quantity").alias("TotalItems"),
+    count("Invoice").alias("NumPurchases")
+).orderBy(col("TotalSpent").desc())
+
+# Crosstab: Products bought per country
+crosstab = df.crosstab("Country", "StockCode")
+crosstab.show(5)
+
+# Filtering Report: High value transactions
+high_value_txn = df.filter(col("TotalAmount") > 100)
+
+# Grouping: Monthly Revenue
+df = df.withColumn("Month", month("InvoiceDate"))
+df = df.withColumn("Year", year("InvoiceDate"))
+monthly_sales = df.groupBy("Year", "Month").agg(_sum("TotalAmount").alias("MonthlyRevenue")).orderBy("Year", "Month")
+
+# Convert to Pandas for visualization
+summary_pd = summary.limit(10).toPandas()
+monthly_sales_pd = monthly_sales.toPandas()
+high_value_counts = high_value_txn.groupBy("Country").count().orderBy(col("count").desc()).toPandas()
+avg_spend_country = df.groupBy("Country").agg(avg("TotalAmount").alias("AvgSpend")).orderBy(col("AvgSpend").desc()).toPandas()
+
+# Chart 1: Top 10 Customers by Spend
+plt.figure(figsize=(10, 6))
+plt.bar(summary_pd['CustomerID'].astype(str), summary_pd['TotalSpent'], color='skyblue')
+plt.title('Top 10 Customers by Total Spend')
+plt.xlabel('Customer ID')
+plt.ylabel('Total Spend')
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# Chart 2: Monthly Revenue
+plt.figure(figsize=(12, 6))
+monthly_sales_pd['Period'] = monthly_sales_pd['Year'].astype(str) + '-' + monthly_sales_pd['Month'].astype(str)
+plt.plot(monthly_sales_pd['Period'], monthly_sales_pd['MonthlyRevenue'], marker='o', linestyle='-', color='green')
+plt.title('Monthly Revenue Over Time')
+plt.xlabel('Period')
+plt.ylabel('Revenue')
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# Chart 3: High Value Transactions Count per Country
+plt.figure(figsize=(12, 6))
+plt.bar(high_value_counts['Country'], high_value_counts['count'], color='orange')
+plt.title('High Value Transactions per Country')
+plt.xlabel('Country')
+plt.ylabel('Number of Transactions')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.grid(True)
+plt.show()
+
+# Chart 4: Average Spend per Transaction per Country
+plt.figure(figsize=(12, 6))
+plt.bar(avg_spend_country['Country'], avg_spend_country['AvgSpend'], color='purple')
+plt.title('Average Spend per Transaction by Country')
+plt.xlabel('Country')
+plt.ylabel('Average Spend')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.grid(True)
+plt.show()
+
+# Chart 5: Top 10 Countries by Number of Transactions
+txn_counts = df.groupBy("Country").count().orderBy(col("count").desc()).limit(10).toPandas()
+plt.figure(figsize=(12, 6))
+plt.bar(txn_counts['Country'], txn_counts['count'], color='teal')
+plt.title('Top 10 Countries by Number of Transactions')
+plt.xlabel('Country')
+plt.ylabel('Transaction Count')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.grid(True)
+plt.show()
+
+# Export Reports
+summary.write.csv("customer_summary.csv", header=True)
+high_value_txn.write.csv("high_value_txn.csv", header=True)
+summary_pd.to_excel("customer_summary.xlsx", index=False)
+
+# Stop session
+spark.stop()
+
+
+
+
+
+
+
+
+
+Explanation:
+
+
+
+
+Let's break down the code and then interpret the results using your uploaded images.
+
+---
+
+### 🔍 **Code Breakdown:**
+
+#### **1. Setup and Libraries:**
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, sum as _sum, avg, count, month, year
+import matplotlib.pyplot as plt
+import pandas as pd
+```
+- Sets up PySpark for big data processing.
+- Uses Matplotlib for charts and Pandas for small-scale data manipulation.
+
+#### **2. Spark Session Initialization:**
+```python
+spark = SparkSession.builder.appName("TransactionAnalysis").getOrCreate()
+```
+- Starts a new Spark session for processing data.
+
+#### **3. Load Data:**
+```python
+df = spark.read.csv("/content/data-analytics A6.csv", header=True, inferSchema=True)
+```
+- Loads the CSV data from Google Colab.
+
+#### **4. Column Cleaning & Computation:**
+```python
+df = df.withColumnRenamed("Customer ID", "CustomerID")
+df = df.withColumn("TotalAmount", col("Quantity") * col("Price"))
+```
+- Renames "Customer ID" to remove spaces.
+- Calculates total spend per row using `Quantity * Price`.
+
+#### **5. Summary Stats per Customer:**
+```python
+summary = df.groupBy("CustomerID").agg(...)
+```
+- Aggregates:
+  - Total spend
+  - Total items bought
+  - Number of purchases
+- Sorted by spend (desc).
+
+#### **6. Crosstab of Products per Country:**
+```python
+crosstab = df.crosstab("Country", "StockCode")
+```
+- Gives a pivot-like table showing how many times each product was bought per country.
+
+#### **7. High Value Transactions:**
+```python
+high_value_txn = df.filter(col("TotalAmount") > 100)
+```
+- Filters rows where total spend per invoice is over 100.
+
+#### **8. Monthly Revenue:**
+```python
+df = df.withColumn("Month", month("InvoiceDate"))
+df = df.withColumn("Year", year("InvoiceDate"))
+```
+- Extracts month and year to compute monthly revenue.
+
+#### **9. Convert to Pandas for Plotting:**
+Various groups like:
+- Top 10 customers
+- Monthly revenue
+- High-value txn by country
+- Avg spend per country
+
+#### **10. Matplotlib Visualizations:**
+Creates 5 charts:
+1. Top 10 customers by spend
+2. Revenue trend over months
+3. High-value txns per country
+4. Average spend per country
+5. Top 10 countries by transaction count
+
+#### **11. Export:**
+```python
+summary.write.csv(...)
+summary_pd.to_excel(...)
+```
+- Saves results as `.csv` and `.xlsx`.
+
+#### **12. Stop Spark Session:**
+```python
+spark.stop()
+```
+
+---
+
+### 📊 **Outputs Explained (based on your uploaded charts):**
+
+#### ✅ **Chart 1: Top 10 Customers by Spend**
+- A bar graph showing which customer IDs spent the most.
+- Likely from `summary_pd` sorted in descending order.
+- Shows that a few customers are responsible for a large portion of revenue.
+
+#### ✅ **Chart 2: Monthly Revenue**
+- Line plot showing trends over time.
+- Combines year and month to track revenue by month.
+- Spikes or dips could indicate seasonal patterns.
+
+#### ✅ **Chart 3: High Value Transactions Count per Country**
+- Highlights which countries make frequent purchases over 100 in value.
+- Likely dominated by countries with higher purchasing power or more volume.
+
+#### ✅ **Chart 4: Average Spend per Transaction per Country**
+- Bar chart showing mean value per transaction for each country.
+- Gives insight into purchasing behavior or product value in different markets.
+
+#### ✅ **Chart 5: Top 10 Countries by Number of Transactions**
+- Bar chart sorted by number of transactions (not amount).
+- Might show a different ranking than Chart 3, highlighting volume over value.
+
+---
+

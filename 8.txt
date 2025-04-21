@@ -1,0 +1,175 @@
+Assignment 8   (matrix multiplication):
+
+
+
+from pyspark.sql import SparkSession
+
+# Start Spark
+spark = SparkSession.builder.appName("MatrixMul").getOrCreate()
+sc = spark.sparkContext
+
+# Input matrices (A: 2x3, B: 3x2)
+A = [(0, 0, 4), (0, 1, 6), (0, 2, 8),
+     (1, 0, 5), (1, 1, 5), (1, 2, 4)]
+
+B = [(0, 0, 7), (0, 1, 8),
+     (1, 0, 9), (1, 1, 10),
+     (2, 0, 11), (2, 1, 12)]
+
+# Parallelize
+rddA = sc.parallelize(A)
+rddB = sc.parallelize(B)
+
+# Map and join
+a_mapped = rddA.map(lambda x: (x[1], (x[0], x[2])))
+b_mapped = rddB.map(lambda x: (x[0], (x[1], x[2])))
+joined = a_mapped.join(b_mapped)
+
+# Multiply and reduce
+products = joined.map(lambda x: ((x[1][0][0], x[1][1][0]), x[1][0][1] * x[1][1][1]))
+result = products.reduceByKey(lambda x, y: x + y)
+
+# Show result
+for ((i, j), val) in sorted(result.collect()):
+    print(f"({i}, {j}) -> {val}")
+
+spark.stop()
+
+
+
+
+
+
+Explanation:
+
+
+This PySpark code performs **matrix multiplication** using **RDDs**. Let’s walk through it step-by-step with detailed explanation and visuals.
+
+---
+
+### 🔷 **Overview**
+
+- Matrix A is **2×3**
+- Matrix B is **3×2**
+- The result of `A × B` is a **2×2** matrix
+
+---
+
+### 🔶 **1. Start Spark Session**
+```python
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.appName("MatrixMul").getOrCreate()
+sc = spark.sparkContext
+```
+- Starts a Spark session named **"MatrixMul"**
+- Gets the Spark **context** (for working with RDDs)
+
+---
+
+### 🔶 **2. Input Matrices**
+```python
+A = [(0, 0, 4), (0, 1, 6), (0, 2, 8),
+     (1, 0, 5), (1, 1, 5), (1, 2, 4)]
+
+B = [(0, 0, 7), (0, 1, 8),
+     (1, 0, 9), (1, 1, 10),
+     (2, 0, 11), (2, 1, 12)]
+```
+
+Each tuple is in the form: `(row_index, col_index, value)`
+
+So:
+```
+Matrix A =
+[[4, 6, 8],
+ [5, 5, 4]]
+
+Matrix B =
+[[ 7,  8],
+ [ 9, 10],
+ [11, 12]]
+```
+
+---
+
+### 🔶 **3. Parallelize to RDDs**
+```python
+rddA = sc.parallelize(A)
+rddB = sc.parallelize(B)
+```
+- Converts Python lists to **distributed RDDs**
+
+---
+
+### 🔶 **4. Map to Prepare for Join**
+```python
+a_mapped = rddA.map(lambda x: (x[1], (x[0], x[2])))
+b_mapped = rddB.map(lambda x: (x[0], (x[1], x[2])))
+```
+We’re **mapping by the common dimension** (`k`) for matrix multiplication:
+
+- `a_mapped`: keyed by **A’s column** → `(k, (i, A[i][k]))`
+- `b_mapped`: keyed by **B’s row** → `(k, (j, B[k][j]))`
+
+Why? Because we multiply `A[i][k] * B[k][j]`, and `k` is common in both.
+
+---
+
+### 🔶 **5. Join on the Shared Index `k`**
+```python
+joined = a_mapped.join(b_mapped)
+```
+- Joins A and B entries with the **same `k`**
+- Output is: `(k, ((i, A_val), (j, B_val)))`
+
+---
+
+### 🔶 **6. Multiply Corresponding Values**
+```python
+products = joined.map(lambda x: ((x[1][0][0], x[1][1][0]), x[1][0][1] * x[1][1][1]))
+```
+- Computes: `A[i][k] * B[k][j]`
+- Key becomes: `(i, j)` for result matrix `C[i][j]`
+- Value: product of the two numbers
+
+---
+
+### 🔶 **7. Reduce to Sum Partial Products**
+```python
+result = products.reduceByKey(lambda x, y: x + y)
+```
+- Adds all the partial products for each `(i, j)`
+- Final value is `C[i][j]`
+
+---
+
+### 🔶 **8. Display Results**
+```python
+for ((i, j), val) in sorted(result.collect()):
+    print(f"({i}, {j}) -> {val}")
+```
+- Collects results to the driver and prints them in order.
+
+---
+
+### ✅ **Expected Output**
+For the input matrices A (2×3) and B (3×2), result C (2×2):
+
+```
+C[0][0] = 4×7 + 6×9 + 8×11 = 28 + 54 + 88 = 170
+C[0][1] = 4×8 + 6×10 + 8×12 = 32 + 60 + 96 = 188
+C[1][0] = 5×7 + 5×9 + 4×11 = 35 + 45 + 44 = 124
+C[1][1] = 5×8 + 5×10 + 4×12 = 40 + 50 + 48 = 138
+```
+
+So output:
+```
+(0, 0) -> 170
+(0, 1) -> 188
+(1, 0) -> 124
+(1, 1) -> 138
+```
+
+---
+
+

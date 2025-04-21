@@ -1,0 +1,244 @@
+Assignment 9    (weather database):
+
+
+
+!pip install -q pandas requests pyspark
+
+
+# ----------------- STEP 0: INSTALL DEPENDENCIES -----------------
+
+
+import os
+import requests
+import pandas as pd
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.functions import col
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml.feature import VectorAssembler
+
+# ----------------- 1. DOWNLOAD WEATHER DATA -----------------
+base_url = "https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/{}/{}.csv"
+years = range(2021, 2024)
+stations = ["99495199999", "72429793812"]  # Florida & Cincinnati
+
+input_dir = "/content/weather_data"
+output_dir = "/content/cleaned_weather_data"
+
+for year in years:
+    os.makedirs(f"{input_dir}/{year}", exist_ok=True)
+    for station in stations:
+        url = base_url.format(year, station)
+        response = requests.get(url)
+        if response.status_code == 200:
+            with open(f"{input_dir}/{year}/{station}.csv", "wb") as file:
+                file.write(response.content)
+
+# ----------------- 2. CLEAN DATA -----------------
+invalid_values = {"MAX": 9999.9, "MXSPD": 999.9}
+
+for year in years:
+    os.makedirs(f"{output_dir}/{year}", exist_ok=True)
+    for station in stations:
+        file_path = f"{input_dir}/{year}/{station}.csv"
+        df = pd.read_csv(file_path)
+        for column, invalid in invalid_values.items():
+            if column in df.columns:
+                df = df[df[column] != invalid]
+        df.to_csv(f"{output_dir}/{year}/{station}.csv", index=False)
+
+# ----------------- 3. SPARK SETUP -----------------
+spark = SparkSession.builder.appName("Weather Analysis").getOrCreate()
+
+# ----------------- 4. HOTTEST DAY -----------------
+hottest_days = {}
+for year in years:
+    for station in stations:
+        path = f"{output_dir}/{year}/{station}.csv"
+        df = spark.read.csv(path, header=True, inferSchema=True)
+        if "MAX" in df.columns:
+            max_day = df.orderBy(F.desc("MAX")).first()
+            if max_day:
+                hottest_days[year] = (max_day.STATION, max_day.DATE, max_day.MAX)
+
+hottest_days_df = spark.createDataFrame([(year, *data) for year, data in hottest_days.items()],
+                                        ["YEAR", "STATION", "DATE", "MAX"])
+print("🔥 Hottest Days")
+hottest_days_df.show()
+
+# ----------------- 5. COLDEST DAY IN MARCH -----------------
+march_data = []
+for year in years:
+    for station in stations:
+        path = f"{output_dir}/{year}/{station}.csv"
+        df = spark.read.csv(path, header=True, inferSchema=True)
+        if "MIN" in df.columns and "DATE" in df.columns:
+            march_df = df.filter(df.DATE.contains('-03-'))
+            coldest_day = march_df.orderBy(F.asc("MIN")).first()
+            if coldest_day:
+                march_data.append((coldest_day.STATION, coldest_day.DATE, coldest_day.MIN))
+
+coldest_day_df = spark.createDataFrame(march_data, ["STATION", "DATE", "MIN"])
+print("❄️ Coldest Days in March")
+coldest_day_df.show()
+
+# ----------------- 6. AVERAGE PRECIPITATION -----------------
+annual_precipitation = []
+for year in years:
+    for station in stations:
+        path = f"{output_dir}/{year}/{station}.csv"
+        df = spark.read.csv(path, header=True, inferSchema=True)
+        if "PRCP" in df.columns:
+            mean_prcp = df.agg(F.mean("PRCP").alias("Mean_PRCP")).first().Mean_PRCP
+            annual_precipitation.append((station, year, mean_prcp))
+
+annual_precipitation_df = spark.createDataFrame(annual_precipitation, ["STATION", "YEAR", "Mean_PRCP"])
+print("🌧️ Average Precipitation")
+annual_precipitation_df.show()
+
+# ----------------- 7. WIND CHILL ANALYSIS -----------------
+path = f"{output_dir}/2022/72429793812.csv"
+df = spark.read.csv(path, header=True, inferSchema=True)
+if "TEMP" in df.columns and "WDSP" in df.columns:
+    df_filtered = df.filter((col("TEMP") < 50) & (col("WDSP") > 3))
+    df_wind_chill = df_filtered.withColumn("Wind Chill",
+        35.74 + (0.6215 * col("TEMP")) - (35.75 * (col("WDSP") ** 0.16)) +
+        (0.4275 * col("TEMP") * (col("WDSP") ** 0.16))
+    )
+    print("💨 Wind Chill")
+    df_wind_chill.select("DATE", "Wind Chill").orderBy("Wind Chill").show()
+
+# ----------------- 8. TEMPERATURE PREDICTION MODEL -----------------
+df = spark.read.csv(path, header=True, inferSchema=True)
+if "MAX" in df.columns and "DATE" in df.columns:
+    df = df.withColumn("DAY_OF_YEAR", F.dayofyear("DATE"))
+    assembler = VectorAssembler(inputCols=["DAY_OF_YEAR"], outputCol="features")
+    train_data = assembler.transform(df).select("features", col("MAX").alias("label"))
+
+    lr = LinearRegression()
+    lr_model = lr.fit(train_data)
+
+    predictions_df = spark.createDataFrame([(day,) for day in range(305, 366)], ["DAY_OF_YEAR"])
+    predictions = assembler.transform(predictions_df)
+    predicted_temps = lr_model.transform(predictions)
+
+    print("📈 Predicted Temperatures (Late Year)")
+    predicted_temps.select("DAY_OF_YEAR", "prediction").show()
+
+# ----------------- 9. EXTREME WEATHER DAYS -----------------
+path = f"{output_dir}/2023/99495199999.csv"
+df = spark.read.csv(path, header=True, inferSchema=True)
+if "FRSHTT" in df.columns:
+    extreme_weather_count = df.filter(col("FRSHTT") != 0).count()
+    print(f"🌪️ Number of extreme weather days in 2023: {extreme_weather_count}")
+
+
+
+
+
+
+
+Explanation:
+
+
+Here’s a breakdown and explanation of the provided PySpark + Pandas code step by step:
+
+---
+
+### **STEP 0: INSTALL DEPENDENCIES**
+These are installed earlier in Google Colab using:
+```bash
+pip install pandas requests pyspark
+```
+Then the necessary Python libraries are imported:
+- `os`: For directory creation and file management
+- `requests`: For downloading data from a URL
+- `pandas`: For initial data cleaning
+- `pyspark`: For distributed processing and ML modeling
+
+---
+
+### **1. DOWNLOAD WEATHER DATA**
+```python
+base_url = "https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/{}/{}.csv"
+years = range(2021, 2024)
+stations = ["99495199999", "72429793812"]  # Florida & Cincinnati
+```
+- Downloads weather CSV files for each year (2021–2023) for 2 weather stations.
+- Files are stored in `/content/weather_data/<year>/`.
+
+---
+
+### **2. CLEAN DATA**
+```python
+invalid_values = {"MAX": 9999.9, "MXSPD": 999.9}
+```
+- These represent missing or invalid weather values in NOAA's dataset.
+- For each file:
+  - It reads the data using Pandas.
+  - Filters out rows with invalid values.
+  - Saves cleaned data to `/content/cleaned_weather_data/<year>/`.
+
+---
+
+### **3. SPARK SETUP**
+```python
+spark = SparkSession.builder.appName("Weather Analysis").getOrCreate()
+```
+- Starts a new Spark session so we can use DataFrames and perform parallel computations.
+
+---
+
+### **4. HOTTEST DAY**
+- For each cleaned dataset:
+  - Finds the row with the highest `MAX` temperature.
+  - Saves results (station, date, max temp) for each year.
+- Displays all hottest days.
+
+---
+
+### **5. COLDEST DAY IN MARCH**
+- Filters the data for rows in March (`DATE` contains `-03-`).
+- Finds the coldest `MIN` temperature day for each dataset.
+- Displays the coldest day in March for each year and station.
+
+---
+
+### **6. AVERAGE PRECIPITATION**
+- Calculates the average precipitation (`PRCP`) for each station/year.
+- Uses Spark’s aggregation to compute `mean(PRCP)`.
+- Displays a table of average rainfall.
+
+---
+
+### **7. WIND CHILL ANALYSIS**
+```python
+Wind Chill = 35.74 + 0.6215T - 35.75V^0.16 + 0.4275T * V^0.16
+```
+- Based on temperature (`TEMP`) and wind speed (`WDSP`) for Cincinnati in 2022.
+- Applies the formula only if `TEMP < 50` and `WDSP > 3`.
+- Displays a list of wind chill values ordered by coldest.
+
+---
+
+### **8. TEMPERATURE PREDICTION MODEL**
+- Uses Spark MLlib:
+  - Adds `DAY_OF_YEAR` as a feature (1 to 365).
+  - Trains a linear regression model to predict `MAX` temperature based on the day of year.
+- Predicts temperatures for days 305 to 365 (late-year).
+- Displays the predictions.
+
+---
+
+### **9. EXTREME WEATHER DAYS**
+```python
+df.filter(col("FRSHTT") != 0)
+```
+- `FRSHTT` is a 6-digit code indicating presence of Fog, Rain, Snow, Hail, Thunder, Tornado.
+- Counts how many days had **any** of these extreme conditions in 2023 at the Florida station.
+- Prints the total count.
+
+---
+
+
+
+

@@ -1,0 +1,243 @@
+Assignment 5   (stock price prediction):
+
+
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pyspark.sql import SparkSession
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+
+# Initialize Spark Session
+spark = SparkSession.builder.appName("StockPrediction").getOrCreate()
+
+# Load dataset
+file_path = "/content/infolimpioavanzadoTarget.csv"  # Update if needed
+df = spark.read.csv(file_path, header=True, inferSchema=True)
+
+# Convert to Pandas DataFrame
+df_pd = df.toPandas()
+
+# Extract 'close' prices
+data = df_pd[['close']].values
+
+# Normalize data
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(data)
+
+# Function to create time-series dataset
+def create_dataset(data, time_step):
+    x, y = [], []
+    for i in range(len(data) - time_step - 1):
+        x.append(data[i:(i + time_step), 0])
+        y.append(data[i + time_step, 0])
+    return np.array(x), np.array(y)
+
+# Define time step
+time_step = 60
+
+# Split into train and test
+train_size = int(len(data_scaled) * 0.8)
+train_data = data_scaled[:train_size]
+test_data = data_scaled[train_size - time_step:]
+
+# Create datasets
+x_train, y_train = create_dataset(train_data, time_step)
+x_test, y_test = create_dataset(test_data, time_step)
+
+# Reshape for LSTM input
+x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
+x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
+
+# Build LSTM model
+model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(time_step, 1)),
+    LSTM(50, return_sequences=False),
+    Dense(25),
+    Dense(1)
+])
+
+# Compile model
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Train model
+model.fit(x_train, y_train, epochs=5, batch_size=32, verbose=1)
+
+# Predict
+predictions = model.predict(x_test)
+predictions = scaler.inverse_transform(predictions)
+
+# Rescale actual values
+y_test_rescaled = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+# Plot results
+plt.figure(figsize=(12, 6))
+plt.plot(y_test_rescaled, label='Actual Close Price')
+plt.plot(predictions, label='Predicted Close Price')
+plt.title("LSTM Stock Price Prediction")
+plt.xlabel("Time")
+plt.ylabel("Price")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Stop Spark Session
+spark.stop()
+
+
+
+
+
+
+Explanation:
+
+
+
+
+### 📌 **Code Explanation:**
+
+This script uses **LSTM (Long Short-Term Memory)**, a type of recurrent neural network (RNN), to **predict stock prices based on past price history**. Here's a breakdown step by step:
+
+---
+
+#### 🔹 **1. Importing Libraries**
+```python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pyspark.sql import SparkSession
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+```
+- `numpy`, `pandas`: For data handling.
+- `matplotlib`: For plotting.
+- `SparkSession`: For reading the CSV using Apache Spark (good for large datasets).
+- `MinMaxScaler`: Normalizes data to [0,1] range.
+- `Sequential`, `LSTM`, `Dense`: Keras components for creating and training an LSTM model.
+
+---
+
+#### 🔹 **2. Load and Prepare the Data**
+```python
+spark = SparkSession.builder.appName("StockPrediction").getOrCreate()
+df = spark.read.csv(file_path, header=True, inferSchema=True)
+df_pd = df.toPandas()
+```
+- Spark reads the CSV (you provided the path: `/content/infolimpioavanzadoTarget.csv`).
+- Then, it's converted to a Pandas DataFrame.
+
+---
+
+#### 🔹 **3. Extracting and Scaling the ‘Close’ Price**
+```python
+data = df_pd[['close']].values
+scaler = MinMaxScaler()
+data_scaled = scaler.fit_transform(data)
+```
+- The 'close' column is isolated.
+- `MinMaxScaler` normalizes the data to a [0,1] range which helps neural networks learn better.
+
+---
+
+#### 🔹 **4. Creating Time-Series Sequences**
+```python
+def create_dataset(data, time_step):
+    x, y = [], []
+    for i in range(len(data) - time_step - 1):
+        x.append(data[i:(i + time_step), 0])
+        y.append(data[i + time_step, 0])
+    return np.array(x), np.array(y)
+```
+- This function converts the time series into sequences of length `time_step` (60 in this case), where each `x` is a 60-timestep input and `y` is the target (next time point).
+
+---
+
+#### 🔹 **5. Splitting the Data**
+```python
+train_size = int(len(data_scaled) * 0.8)
+train_data = data_scaled[:train_size]
+test_data = data_scaled[train_size - time_step:]
+```
+- 80% data for training, remaining for testing.
+- Subtracting `time_step` in `test_data` ensures enough previous data for forming test sequences.
+
+---
+
+#### 🔹 **6. Data Preparation for LSTM**
+```python
+x_train, y_train = create_dataset(train_data, time_step)
+x_test, y_test = create_dataset(test_data, time_step)
+
+x_train = x_train.reshape((x_train.shape[0], x_train.shape[1], 1))
+x_test = x_test.reshape((x_test.shape[0], x_test.shape[1], 1))
+```
+- Input reshaped to 3D shape (samples, timesteps, features) for LSTM.
+
+---
+
+#### 🔹 **7. Building and Training the LSTM Model**
+```python
+model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(time_step, 1)),
+    LSTM(50, return_sequences=False),
+    Dense(25),
+    Dense(1)
+])
+model.compile(optimizer='adam', loss='mean_squared_error')
+model.fit(x_train, y_train, epochs=5, batch_size=32, verbose=1)
+```
+- The model has:
+  - Two LSTM layers (50 units each),
+  - One Dense layer with 25 units,
+  - Final Dense layer for prediction.
+- Trained for 5 epochs using Adam optimizer.
+
+---
+
+#### 🔹 **8. Making Predictions and Inverse Scaling**
+```python
+predictions = model.predict(x_test)
+predictions = scaler.inverse_transform(predictions)
+y_test_rescaled = scaler.inverse_transform(y_test.reshape(-1, 1))
+```
+- Predictions and actual values are brought back to their original scale.
+
+---
+
+#### 🔹 **9. Plotting the Results**
+```python
+plt.plot(y_test_rescaled, label='Actual Close Price')
+plt.plot(predictions, label='Predicted Close Price')
+```
+- This plot compares the actual and predicted stock prices over time.
+
+---
+
+#### 🔹 **10. Stop Spark Session**
+```python
+spark.stop()
+```
+- Cleanly stops the Spark session.
+
+---
+
+### 📊 **Output Explanation:**
+
+The graph you posted shows:
+- **Blue Line (Actual Close Price)**: The real stock closing prices.
+- **Orange Line (Predicted Close Price)**: The values predicted by the LSTM model.
+
+#### 🟡 Key Observations:
+- Initially, the model tracks the actual price reasonably well.
+- As time progresses, it **fails to capture sharp variations** and flattens out.
+- This is a **common LSTM behavior** when:
+  - Data is too noisy or sparse.
+  - Not enough training (only 5 epochs here).
+  - Model complexity is not sufficient.
+  - Time step size or scaling isn't optimal.
+
+---
+

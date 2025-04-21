@@ -1,0 +1,176 @@
+Assignment 2  (KMeans):
+
+
+
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.clustering import KMeans
+import matplotlib.pyplot as plt
+
+# Start Spark
+spark = SparkSession.builder.appName("KMeans").getOrCreate()
+
+# Load and clean data
+df = spark.read.csv('/content/retail_store_sales.csv', header=True, inferSchema=True).fillna(0)
+
+# Select numeric columns
+num_cols = [c for c, t in df.dtypes if t in ('int', 'double')]
+
+# Assemble and scale features
+vec = VectorAssembler(inputCols=num_cols, outputCol='features').transform(df)
+scaled = StandardScaler(inputCol='features', outputCol='scaled').fit(vec).transform(vec)
+
+# KMeans with 3 clusters
+kmeans_data = KMeans(featuresCol='scaled', k=3).fit(scaled).transform(scaled)
+
+
+# Show predictions
+kmeans_data.select('prediction').show(10)
+
+# Plot using first 2 features
+points = kmeans_data.select('scaled', 'prediction').collect()
+x = [row['scaled'][0] for row in points]
+y = [row['scaled'][1] for row in points]
+labels = [row['prediction'] for row in points]
+
+plt.scatter(x, y, c=labels, cmap='viridis')
+plt.title('KMeans Clusters')
+plt.xlabel('Feature 1')
+plt.ylabel('Feature 2')
+plt.colorbar()
+plt.show()
+
+spark.stop()
+
+
+
+
+
+
+https://www.kaggle.com/datasets/ahmedmohamed2003/retail-store-sales-dirty-for-data-cleaning
+
+
+
+
+
+
+Explanation:
+
+
+🔹 1. What Was Done?
+
+•	We used KMeans Clustering, a machine learning technique, to group similar data points in our dataset.
+
+•	The dataset contains sales data (like store sales, customer purchases, or transactions).
+
+•	We asked the algorithm to divide the data into 3 groups (clusters) based on similarities.
+
+Think of it as grouping similar stores or customers who behave alike, based on their sales numbers or spending patterns.
+________________________________________
+🔹 2. What Does the Output Show?
+
+Table Output
+
++----------+
+
+|prediction|
+
++----------+
+
+|         1|
+
+|         2|
+
+|         0|
+
+|         2|
+
+|         1|
+
+|         1|
+
+|         1|
+
+|         1|
+
+|         0|
+
+|         0|
+
++----------+
+
+•	Each row of your data (each customer or store) has been assigned a cluster label, either 0, 1, or 2.
+
+•	These labels represent the group they belong to:
+
+o	Cluster 0: One type of behavior.
+
+o	Cluster 1: Another type.
+
+o	Cluster 2: Yet another group.
+
+For example:
+
+•	If a store is in Cluster 2, it behaves differently from stores in Clusters 0 or 1.
+________________________________________
+Scatter Plot
+
+•	The plot shows two features (e.g., sales and revenue) on the x-axis and y-axis.
+
+•	Each point is a store/customer, colored by its cluster (0, 1, or 2).
+
+•	We can clearly see:
+
+o	Points that are close together behave similarly and are in the same group.
+
+o	Clusters are separated, meaning the algorithm successfully found patterns in the data.
+________________________________________
+🔹 3. What Can We Infer?
+
+✅ Segmentation:
+
+•	The data points have been grouped based on similarity.
+
+•	For example:
+
+o	Cluster 0 might be low-spending customers or stores with low sales.
+
+o	Cluster 1 might be average-spending customers or medium sales stores.
+
+o	Cluster 2 might represent high-spending customers or stores with high sales.
+
+✅ Actionable Insights:
+
+•	You can analyze each group separately and create different strategies for each:
+
+o	Offer discounts to Cluster 0 to improve sales.
+
+o	Reward Cluster 2 customers for their loyalty.
+
+o	Focus marketing efforts differently based on cluster behavior.
+
+✅ Business Understanding:
+
+•	You've turned raw data into understandable groups.
+
+•	Helps management make decisions based on data-driven insights.
+
+•	Useful for:
+
+o	Customer segmentation
+
+o	Targeted marketing
+
+o	Sales analysis
+
+o	Inventory management, etc.
+
+
+
+
+
+
+
+
+
+
